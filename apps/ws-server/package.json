@@ -13,7 +13,12 @@
   "dependencies": {
     "@types/jsonwebtoken": "^9.0.10",
     "@types/ws": "^8.18.1",
+    "cached-db": "workspace:*",
+    "db": "workspace:*",
+    "dotenv": "^17.2.3",
+    "ioredis": "^5.9.2",
     "jsonwebtoken": "^9.0.3",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "yahoo-finance2": "^3.13.0"
   }
 }
