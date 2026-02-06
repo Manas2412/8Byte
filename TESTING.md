@@ -175,6 +175,11 @@ Response includes **`token`** – copy it into your environment variable `token`
 
 Before testing step 5, ensure: **Redis** is running, **ws-server** is running (`bun run dev` in `apps/ws-server`), and **backend** `.env` has `WS_SERVER_URL=http://localhost:8082` (or the port your ws-server uses).
 
+**Who calls ws-server when:**
+- **On cache miss:** The **backend** calls ws-server (`POST /refresh-portfolio`) when a client requests portfolio-enriched and the cache is empty. You’ll see `[backend] portfolio-enriched: cache MISS - calling ws-server` in the backend log.
+- **Every 15 seconds:** The **ws-server** (not the backend) runs a job that pushes all user IDs to the Redis queue; its worker then updates the cache. So the 15s refresh is entirely inside ws-server. The backend does not call ws-server on a timer.
+- If you always see cache HIT and want to test the miss path: wait for cache TTL to expire (~60s) or flush Redis, then call portfolio-enriched again.
+
 ---
 
 ### 4.4 Backend endpoints reference
