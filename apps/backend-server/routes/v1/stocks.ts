@@ -16,10 +16,12 @@ stocksRouter.get("/portfolio-enriched", authMiddleware, async (req, res) => {
   try {
     const cached = await getPortfolioEnrichedCache(userId);
     if (cached != null) {
+      console.log("[backend] portfolio-enriched: cache HIT for", userId);
       res.json(cached);
       return;
     }
 
+    console.log("[backend] portfolio-enriched: cache MISS for", userId, "- calling ws-server");
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), WS_FETCH_TIMEOUT_MS);
 
