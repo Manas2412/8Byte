@@ -5,23 +5,23 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  /* Majority: charcoal #36454F */
-  --color-charcoal: #36454f;
-  /* Minority / important: green #30DE00 */
-  --color-accent: #30de00;
+  /* Majority: dark gray */
+  --color-charcoal: #343434;
+  /* Minority / important: green */
+  --color-accent: #4aa336;
 }
 
 :root {
-  --accent: oklch(0.75 0.25 142);
+  --accent: #4aa336;
   --radius: 0.625rem;
-  --background: #36454f;
+  --background: #343434;
   --foreground: oklch(0.93 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #30de00;
-  --primary-foreground: #36454f;
+  --primary: #4aa336;
+  --primary-foreground: #343434;
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -153,6 +153,51 @@ a {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+@keyframes typing-dark {
+  0% {
+    width: 0;
+    visibility: hidden;
+    overflow: hidden;
+  }
+  100% {
+    width: 100%;
+    overflow: hidden;
+  }
+}
+
+@keyframes blink-cursor {
+  50% {
+    border-color: transparent;
+  }
+  100% {
+    border-color: rgba(255, 255, 255, 0.9);
+  }
+}
+
+.animate-blink-cursor {
+  animation: blink-cursor 0.7s infinite;
+}
+
+.text-gradient-sunrise {
+  display: inline-block;
+  background: linear-gradient(90deg, #fb923c, #fde047, #fb7185);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Black outline for dark-panel text so it stays readable on any background */
+.text-outline-black {
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000,
+    0 0 3px #000,
+    0 0 4px #000;
 }
 
 @layer base {

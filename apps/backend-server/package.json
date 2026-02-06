@@ -27,6 +27,7 @@
     "cached-db": "workspace:*",
     "common": "*",
     "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
     "db": "*",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",

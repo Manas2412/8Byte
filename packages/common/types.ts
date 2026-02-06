@@ -3,7 +3,7 @@ import { z } from "zod";
 export const CreateUserSchema = z.object({
     email: z.string().email({ message: "Invalid email" }),
     password: z.string()
-        .min(8, { message: "Password must be at least 6 characters" })
+        .min(8, { message: "Password must be at least 8 characters" })
         .max(20, { message: "Password cannot exceed 20 characters" })
         .refine((password) => /[A-Z]/.test(password), {
             message: "Must contain at least one uppercase letter",
@@ -23,7 +23,7 @@ export const CreateUserSchema = z.object({
 export const SigninSchema = z.object({
     email: z.string().email({ message: "Invalid email" }),
     password: z.string()
-        .min(8, { message: "Password must be at least 6 characters" })
+        .min(8, { message: "Password must be at least 8 characters" })
         .max(20, { message: "Password cannot exceed 20 characters" })
         .refine((password) => /[A-Z]/.test(password), {
             message: "Must contain at least one uppercase letter",
