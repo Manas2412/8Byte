@@ -4,8 +4,7 @@ import authMiddleware, { type AuthRequest } from "./middleware.js";
 import bcrypt from "bcrypt";
 import "dotenv/config";
 import { CreateUserSchema, SigninSchema } from "common/types";
-
-const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret";
+import { JWT_SECRET } from "backend-common/config";
 
 // Lazy-load db so /health and server startup don't block on DB connection
 let prismaPromise: Promise<typeof import("db/client").default> | null = null;
@@ -112,19 +111,62 @@ usersRouter.post("/sign-in", async (req, res) => {
         sameSite: "lax",
         secure: process.env.NODE_ENV === "production",
       })
-      .json({ message: "Logged in" });
+      .json({ message: "Logged in", token });
   } catch (error) {
     console.error("Error during sign-in:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-usersRouter.get("/profile", authMiddleware, (req, res) => {
+usersRouter.get("/profile", authMiddleware, async (req, res) => {
   const { userId } = req as AuthRequest;
-  res.json({
-    id: userId
-  });
-});
+  try {
+    const prisma = await getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        portfolio: {
+          include: { stocks: true },
+        },
+      },
+    });
 
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+
+    const stocks = user.portfolio?.stocks ?? [];
+    const totalInvestment = stocks.reduce(
+      (sum, s) => sum + Number(s.investment),
+      0
+    );
+
+    const profileStocks = stocks.map((s) => {
+      const investment = Number(s.investment);
+      const portfolioPercent =
+        totalInvestment > 0 ? (investment / totalInvestment) * 100 : 0;
+      return {
+        stockName: s.name,
+        purchasePrice: Number(s.purchasedPrice),
+        quantity: s.purchasedQuantity,
+        investment,
+        portfolioPercent: Math.round(portfolioPercent * 100) / 100,
+        exchange: (s as { exchange?: string }).exchange ?? "NSE",
+      };
+    });
+
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      stocks: profileStocks,
+      totalInvestment,
+    });
+  } catch (error) {
+    console.error("Error fetching profile:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 export default usersRouter;

@@ -7,6 +7,7 @@ import { startPortfolioRefreshJob } from "./refreshJob.js";
 import { startPortfolioQueueWorker } from "./queueWorker.js";
 
 const HTTP_PORT = Number(process.env.WS_HTTP_PORT ?? 8081);
+const WS_PORT = Number(process.env.WS_PORT ?? 8080);
 
 // ----- HTTP API: enqueue refresh (worker processes batch-wise to avoid API overload) -----
 Bun.serve({
@@ -64,9 +65,9 @@ startPortfolioQueueWorker();
 // ----- 15s job: pushes user ids to same stream (worker processes them batch-wise) -----
 startPortfolioRefreshJob();
 
-// ----- WebSocket server -----
-const wss = new WebSocketServer({ port: 8080 });
-console.log("🚀 WebSocket server on ws://localhost:8080");
+// ----- WebSocket server (separate port from HTTP) -----
+const wss = new WebSocketServer({ port: WS_PORT });
+console.log(`🚀 WebSocket server on ws://localhost:${WS_PORT}`);
 
 wss.on("connection", function connection(ws, request) {
   console.log("🔗 Client connected");

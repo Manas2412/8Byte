@@ -3,6 +3,11 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "dev": "bun run index.ts",
+    "start": "bun run index.ts",
+    "seed": "bun run scripts/seed-test-user.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/bcrypt": "^5.0.2"
@@ -10,16 +15,23 @@
   "peerDependencies": {
     "typescript": "^5",
     "db": "*",
-    "common" : "*"
+    "common": "*",
+    "backend-common": "*"
   },
   "dependencies": {
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "backend-common": "*",
     "bcrypt": "^6.0.0",
-    "dotenv": "^16.4.7",
+    "cached-db": "workspace:*",
+    "common": "*",
     "cookie-parser": "^1.4.7",
+    "db": "*",
+    "dotenv": "^16.4.7",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3"
+    "ioredis": "^5.9.2",
+    "jsonwebtoken": "^9.0.3",
+    "yahoo-finance2": "^3.13.0"
   }
 }

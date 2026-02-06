@@ -34,8 +34,26 @@ export function startPortfolioRefreshJob(): void {
       for (const user of users) {
         await pushPortfolioRefreshToStream(user.id);
       }
-    } catch (err) {
-      console.error("[ws-server] Refresh job error:", err);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = (err as { code?: string })?.code;
+      const isDbUnreachable =
+        msg.includes("Can't reach database server") ||
+        msg.includes("DatabaseNotReachable") ||
+        code === "P1001";
+      const isTableMissing =
+        code === "P2021" || msg.includes("does not exist in the current database");
+      if (isDbUnreachable) {
+        console.warn(
+          "[ws-server] Refresh job: database not reachable. Is PostgreSQL running? Check DATABASE_URL in .env"
+        );
+      } else if (isTableMissing) {
+        console.warn(
+          "[ws-server] Refresh job: tables missing. Run: cd packages/db && bunx prisma migrate deploy"
+        );
+      } else {
+        console.error("[ws-server] Refresh job error:", err);
+      }
     }
   }
 

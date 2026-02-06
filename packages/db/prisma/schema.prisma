@@ -28,6 +28,7 @@ model Stock {
   id                String    @id @default(uuid())
   symbol            String    @unique
   name              String    @unique
+  exchange          String    @default("NSE") // NSE or BSE
   purchasedPrice    Decimal
   purchasedAt       DateTime
   purchasedQuantity Int

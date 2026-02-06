@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Stock" ADD COLUMN "exchange" TEXT NOT NULL DEFAULT 'NSE';

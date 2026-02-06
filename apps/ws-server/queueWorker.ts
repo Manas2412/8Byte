@@ -96,7 +96,13 @@ export function startPortfolioQueueWorker(): void {
       );
       processBatch();
     } catch (err) {
-      console.error("[ws-server] Failed to start queue worker:", err);
+      console.error(
+        "[ws-server] Failed to start queue worker:",
+        err instanceof Error ? err.message : err
+      );
+      console.warn(
+        "[ws-server] Is Redis running? Check REDIS_URL in .env (e.g. redis://localhost:6379)"
+      );
     }
   })();
 }
