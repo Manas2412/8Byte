@@ -119,6 +119,7 @@ export type StockRow = {
   purchasedQuantity: number;
   investment: { toString(): string } | number;
   exchange?: string;
+  industry?: string;
 };
 
 export type UserWithPortfolio = {
@@ -183,6 +184,7 @@ export async function buildEnrichedPortfolio(
       return {
         stockName: s.name,
         symbol: s.symbol,
+        industry: (s as { industry?: string }).industry,
         exchange,
         purchasePrice: Number(s.purchasedPrice),
         quantity: qty,

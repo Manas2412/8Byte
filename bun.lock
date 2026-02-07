@@ -54,6 +54,7 @@
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
         "tailwind-merge": "^3.4.0",
+        "ws-frontend": "*",
       },
       "devDependencies": {
         "@repo/eslint-config": "*",
@@ -179,6 +180,19 @@
         "@types/react-dom": "19.2.2",
         "eslint": "^9.39.1",
         "typescript": "5.9.2",
+      },
+    },
+    "packages/ws-frontend": {
+      "name": "ws-frontend",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@repo/typescript-config": "*",
+        "@types/react": "19.2.2",
+        "typescript": "5.9.2",
+      },
+      "peerDependencies": {
+        "react": "^18 || ^19",
+        "typescript": "^5",
       },
     },
   },
@@ -1784,6 +1798,8 @@
     "wrappy": ["wrappy@1.0.2", "", {}, "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ=="],
 
     "ws": ["ws@8.19.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg=="],
+
+    "ws-frontend": ["ws-frontend@workspace:packages/ws-frontend"],
 
     "ws-server": ["ws-server@workspace:apps/ws-server"],
 

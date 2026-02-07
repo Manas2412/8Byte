@@ -136,6 +136,8 @@ usersRouter.get("/profile", authMiddleware, async (req, res) => {
       return;
     }
 
+    type UserWithProfile = typeof user & { phoneNumber?: string | null; countryCode?: string | null; bio?: string | null };
+    const profileUser = user as UserWithProfile;
     const stocks = user.portfolio?.stocks ?? [];
     const totalInvestment = stocks.reduce(
       (sum, s) => sum + Number(s.investment),
@@ -147,7 +149,10 @@ usersRouter.get("/profile", authMiddleware, async (req, res) => {
       const portfolioPercent =
         totalInvestment > 0 ? (investment / totalInvestment) * 100 : 0;
       return {
+        id: s.id,
         stockName: s.name,
+        symbol: s.symbol,
+        industry: (s as { industry?: string }).industry ?? null,
         purchasePrice: Number(s.purchasedPrice),
         quantity: s.purchasedQuantity,
         investment,
@@ -157,14 +162,49 @@ usersRouter.get("/profile", authMiddleware, async (req, res) => {
     });
 
     res.json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
+      id: profileUser.id,
+      name: profileUser.name,
+      email: profileUser.email,
+      phoneNumber: profileUser.phoneNumber ?? null,
+      countryCode: profileUser.countryCode ?? null,
+      bio: profileUser.bio ?? null,
       stocks: profileStocks,
       totalInvestment,
     });
   } catch (error) {
     console.error("Error fetching profile:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+usersRouter.patch("/profile", authMiddleware, async (req, res) => {
+  const { userId } = req as AuthRequest;
+  const body = req.body as Record<string, unknown>;
+  const updates: { name?: string; email?: string; phoneNumber?: string | null; countryCode?: string | null; bio?: string | null } = {};
+  if (typeof body.name === "string" && body.name.trim()) updates.name = body.name.trim();
+  if (typeof body.email === "string" && body.email.trim()) updates.email = body.email.trim();
+  if (body.phoneNumber !== undefined) updates.phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() || null : null;
+  if (body.countryCode !== undefined) updates.countryCode = typeof body.countryCode === "string" ? body.countryCode.trim() || null : null;
+  if (body.bio !== undefined) updates.bio = typeof body.bio === "string" ? body.bio.trim() || null : null;
+
+  try {
+    const prisma = await getPrisma();
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: updates,
+    });
+    type UserWithProfile = typeof updated & { phoneNumber?: string | null; countryCode?: string | null; bio?: string | null };
+    const profileUser = updated as UserWithProfile;
+    res.json({
+      id: profileUser.id,
+      name: profileUser.name,
+      email: profileUser.email,
+      phoneNumber: profileUser.phoneNumber ?? null,
+      countryCode: profileUser.countryCode ?? null,
+      bio: profileUser.bio ?? null,
+    });
+  } catch (error) {
+    console.error("Error updating profile:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });

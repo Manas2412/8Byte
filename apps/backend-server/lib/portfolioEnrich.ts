@@ -12,8 +12,10 @@ function toYahooSymbol(symbol: string, exchange: string): string {
 }
 
 export type StockRow = {
+  id: string;
   symbol: string;
   name: string;
+  industry?: string;
   purchasedPrice: { toString(): string } | number;
   purchasedQuantity: number;
   investment: { toString(): string } | number;
@@ -28,8 +30,10 @@ export type UserWithPortfolio = {
 };
 
 export type EnrichedStock = {
+  id: string;
   stockName: string;
   symbol: string;
+  industry?: string;
   exchange: string;
   purchasePrice: number;
   quantity: number;
@@ -104,8 +108,10 @@ export async function buildEnrichedPortfolio(
           : 0;
 
       return {
+        id: (s as { id: string }).id,
         stockName: s.name,
         symbol: s.symbol,
+        industry: (s as { industry?: string }).industry,
         exchange,
         purchasePrice: Number(s.purchasedPrice),
         quantity: qty,

@@ -5,7 +5,140 @@ import { getPortfolioEnrichedCache } from "cached-db/client";
 const WS_SERVER_URL = process.env.WS_SERVER_URL ?? "http://localhost:8081";
 const WS_FETCH_TIMEOUT_MS = Number(process.env.WS_FETCH_TIMEOUT_MS ?? 15_000);
 
+let prismaPromise: Promise<typeof import("db/client").default> | null = null;
+function getPrisma() {
+  if (!prismaPromise) prismaPromise = import("db/client").then((m) => m.default);
+  return prismaPromise;
+}
+
+const STOCK_INDUSTRIES = [
+  "Healthcare",
+  "Finance",
+  "Technology",
+  "Energy",
+  "Consumer",
+  "Materials",
+  "Utilities",
+] as const;
+
 const stocksRouter = Router();
+
+/** Add a stock to the authenticated user's portfolio. */
+stocksRouter.post("/", authMiddleware, async (req, res) => {
+  const { userId } = req as AuthRequest;
+  const body = req.body as Record<string, unknown>;
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const symbol = typeof body.symbol === "string" ? body.symbol.trim() : "";
+  const industryRaw = typeof body.industry === "string" ? body.industry.trim() : "";
+  const industry = STOCK_INDUSTRIES.includes(industryRaw as (typeof STOCK_INDUSTRIES)[number])
+    ? (industryRaw as (typeof STOCK_INDUSTRIES)[number])
+    : "Technology";
+  const purchasePriceRaw = body.purchasePrice;
+  const purchasePrice =
+    typeof purchasePriceRaw === "number"
+      ? purchasePriceRaw
+      : Number(typeof purchasePriceRaw === "string" ? purchasePriceRaw.trim() : purchasePriceRaw);
+  const quantityRaw = body.quantity;
+  const quantity =
+    typeof quantityRaw === "number"
+      ? Math.floor(quantityRaw)
+      : Math.floor(Number(typeof quantityRaw === "string" ? quantityRaw.trim() : quantityRaw));
+
+  if (!name || !symbol) {
+    res.status(400).json({ message: "Stock name and symbol are required" });
+    return;
+  }
+  if (!Number.isFinite(purchasePrice) || purchasePrice <= 0) {
+    res.status(400).json({ message: "Purchase price must be a positive number" });
+    return;
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    res.status(400).json({ message: "Quantity must be a positive integer" });
+    return;
+  }
+
+  const investment = Math.round(purchasePrice * quantity * 100) / 100;
+
+  try {
+    const prisma = await getPrisma();
+    let portfolio = await prisma.portfolio.findUnique({ where: { userId } });
+    if (!portfolio) {
+      portfolio = await prisma.portfolio.create({ data: { userId } });
+    }
+    const stock = await prisma.stock.create({
+      data: {
+        name,
+        symbol: symbol.toUpperCase(),
+        exchange: "NSE",
+        industry,
+        purchasedPrice: purchasePrice,
+        purchasedQuantity: quantity,
+        investment,
+        purchasedAt: new Date(),
+        portfolioId: portfolio.id,
+      } as Parameters<typeof prisma.stock.create>[0]["data"],
+    });
+    const created = stock as { id: string; name: string; symbol: string; industry?: string; purchasedPrice: unknown; purchasedQuantity: number; investment: unknown };
+    res.status(201).json({
+      id: created.id,
+      name: created.name,
+      symbol: created.symbol,
+      industry: created.industry,
+      purchasePrice: Number(created.purchasedPrice),
+      quantity: created.purchasedQuantity,
+      investment: Number(created.investment),
+    });
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    const msg =
+      err?.code === "P2002"
+        ? "A stock with this symbol or name already exists."
+        : err?.code === "P2003"
+          ? "Invalid portfolio. Please try again."
+          : typeof err?.message === "string"
+            ? err.message
+            : "Failed to add stock.";
+    console.error("Error adding stock:", e);
+    res.status(400).json({ message: msg });
+  }
+});
+
+/** Delete one or more stocks by id or symbol (must belong to the authenticated user's portfolio). */
+stocksRouter.delete("/", authMiddleware, async (req, res) => {
+  const { userId } = req as AuthRequest;
+  const body = req.body as Record<string, unknown>;
+  const rawIds = body.stockIds;
+  const rawSymbols = body.symbols;
+  const stockIds = Array.isArray(rawIds)
+    ? (rawIds as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+  const symbols = Array.isArray(rawSymbols)
+    ? (rawSymbols as unknown[]).filter((x): x is string => typeof x === "string").map((s) => s.toUpperCase())
+    : [];
+  if (stockIds.length === 0 && symbols.length === 0) {
+    res.status(400).json({ message: "stockIds or symbols array is required with at least one value" });
+    return;
+  }
+  try {
+    const prisma = await getPrisma();
+    const portfolio = await prisma.portfolio.findUnique({ where: { userId } });
+    if (!portfolio) {
+      res.status(200).json({ deleted: 0, message: "No portfolio" });
+      return;
+    }
+    const where = { portfolioId: portfolio.id } as { portfolioId: string; id?: { in: string[] }; symbol?: { in: string[] } };
+    if (stockIds.length > 0) {
+      where.id = { in: stockIds };
+    } else {
+      where.symbol = { in: symbols };
+    }
+    const result = await prisma.stock.deleteMany({ where });
+    res.status(200).json({ deleted: result.count });
+  } catch (e) {
+    console.error("Error deleting stocks:", e);
+    res.status(500).json({ message: "Failed to delete stocks" });
+  }
+});
 
 /**
  * Flow: check cached-db first (cache hit → return). On miss: POST ws-server → push to Redis queue;

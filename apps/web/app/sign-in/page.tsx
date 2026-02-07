@@ -97,7 +97,7 @@ export default function SignInPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.redirected || res.status === 303) {
-        window.location.href = "/pages/sign-up";
+        window.location.href = "/user";
         return;
       }
       if (!res.ok) {
@@ -108,7 +108,7 @@ export default function SignInPage() {
       if (token && typeof window !== "undefined") {
         localStorage.setItem("token", token);
       }
-      window.location.href = "/";
+      window.location.href = "/user";
     } catch {
       setError("Network error. Is the backend running?");
     } finally {
@@ -223,10 +223,10 @@ export default function SignInPage() {
             </Button>
             <CardAction className="col-start-1 col-span-2 justify-self-center flex items-center justify-center gap-2">
               <p>
-                Don't have an account?
+                Don&apos;t have an account?
               </p>
               <Button variant="link" asChild className="text-[#4AA336] p-0 underline underline-offset-4 decoration-[#4AA336] hover:decoration-[#4AA336]">
-                <Link href="/pages/sign-up">Sign-Up Here</Link>
+                <Link href="/">Sign-Up Here</Link>
               </Button>
             </CardAction>
           </CardFooter>
@@ -237,26 +237,37 @@ export default function SignInPage() {
 
   const darkPanel = (
     <div
-      className="hidden lg:flex flex-1 min-h-screen bg-charcoal items-center justify-center p-12 bg-cover bg-center bg-no-repeat relative"
+      className="hidden lg:flex flex-1 min-w-0 min-h-screen bg-charcoal items-center justify-center p-12 bg-cover bg-center bg-no-repeat relative overflow-hidden"
       style={{ backgroundImage: "url(/dark-panel-bg.png)" }}
       aria-hidden
     >
       <div className="absolute inset-0 bg-charcoal/60" aria-hidden />
-      <div className="relative z-10 w-full max-w-md flex items-center justify-center p-6 text-center">
-        <p className="text-white/90 text-5xl font-medium leading-relaxed whitespace-nowrap text-outline-black">
+      <div className="relative z-10 w-full max-w-md min-w-0 flex items-center justify-center p-6 text-center overflow-hidden">
+        <p className="w-full max-w-full text-white/90 text-5xl font-medium leading-relaxed whitespace-nowrap text-outline-black overflow-hidden text-ellipsis">
           <span className="inline-block min-w-[7.5rem] overflow-hidden whitespace-nowrap text-left align-bottom">
             {typewriterText}
           </span>{" "}
           insights that drive
           <br />
-          <span className="text-gradient-sunrise text-outline-black">smarter decisions</span>
+          <span
+            className="inline-block text-outline-black"
+            style={{
+              background: "linear-gradient(90deg, #f97316, #eab308, #ec4899)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            smarter decisions
+          </span>
         </p>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex overflow-x-hidden">
       {formPanel}
       {darkPanel}
     </div>

@@ -1,0 +1,10 @@
+{
+  "extends": "../typescript-config/react-library.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "module": "ESNext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "index.ts"]
+}

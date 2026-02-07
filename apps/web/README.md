@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/create-next-app).
 
+## Frontend flow
+
+See **[FRONTEND_FLOW.md](./FRONTEND_FLOW.md)** for frontend flow (sign-up → sign-in → user; backend-server for data/updates; ws-frontend for 15 s poll) and backend flow (backend-server → db; cache hit/miss and ws-server → Redis queue; 15 s job updating cache).
+
 ## Getting Started
 
 First, run the development server:

@@ -6,7 +6,7 @@
 
 @theme {
   /* Majority: dark gray */
-  --color-charcoal: #343434;
+  --color-charcoal: #1C1C1C;
   /* Minority / important: green */
   --color-accent: #4aa336;
 }
@@ -14,14 +14,14 @@
 :root {
   --accent: #4aa336;
   --radius: 0.625rem;
-  --background: #343434;
+  --background: #1C1C1C;
   --foreground: oklch(0.93 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: #4aa336;
-  --primary-foreground: #343434;
+  --primary-foreground: #1C1C1C;
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -52,10 +52,16 @@ body {
   overflow-x: hidden;
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+  }
+  html,
+  body {
+    padding: 0;
+  }
+  /* Padding not reset on * so Tailwind p-4, p-[15px], etc. work on other elements */
 }
 
 a {
@@ -182,11 +188,17 @@ a {
 
 .text-gradient-sunrise {
   display: inline-block;
-  background: linear-gradient(90deg, #fb923c, #fde047, #fb7185);
+  background: linear-gradient(90deg, #f97316, #eab308, #ec4899);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   color: transparent;
+}
+
+/* Ensure gradient shows when used with outline (override inherited color) */
+span.text-gradient-sunrise {
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
 }
 
 /* Black outline for dark-panel text so it stays readable on any background */
