@@ -1,4 +1,3 @@
-// Only load .env when not set (e.g. Docker Compose sets DATABASE_URL, REDIS_URL)
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 if (!process.env.DATABASE_URL || !process.env.REDIS_URL) {

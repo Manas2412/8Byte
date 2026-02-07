@@ -23,7 +23,6 @@ const STOCK_INDUSTRIES = [
 
 const stocksRouter = Router();
 
-/** Add a stock to the authenticated user's portfolio. */
 stocksRouter.post("/", authMiddleware, async (req, res) => {
   const { userId } = req as AuthRequest;
   const body = req.body as Record<string, unknown>;
@@ -103,7 +102,6 @@ stocksRouter.post("/", authMiddleware, async (req, res) => {
   }
 });
 
-/** Delete one or more stocks by id or symbol (must belong to the authenticated user's portfolio). */
 stocksRouter.delete("/", authMiddleware, async (req, res) => {
   const { userId } = req as AuthRequest;
   const body = req.body as Record<string, unknown>;
@@ -143,11 +141,7 @@ stocksRouter.delete("/", authMiddleware, async (req, res) => {
 const RATE_LIMIT_HEADER =
   "Cache responses (Redis / in-memory); limit requests (e.g. 1 request per symbol per minute); never scrape on every page load.";
 
-/**
- * Flow: check cached-db first (cache hit → return). On miss: build enriched in backend (rate-limited
- * via Redis quote cache), write to cache, return so frontend gets live data immediately.
- * Optionally queue refresh on ws-server for 15s job to keep cache warm.
- */
+
 stocksRouter.get("/portfolio-enriched", authMiddleware, async (req, res) => {
   const { userId } = req as AuthRequest;
   console.log("[backend] GET /portfolio-enriched for userId:", userId?.slice(0, 8) + "...");
@@ -281,7 +275,7 @@ stocksRouter.get("/portfolio-enriched", authMiddleware, async (req, res) => {
       res.json(fallback);
     }
 
-    // Optional: queue refresh on ws-server so 15s job keeps cache warm (fire-and-forget)
+
     fetch(`${WS_SERVER_URL}/refresh-portfolio`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -300,7 +294,6 @@ stocksRouter.get("/portfolio-enriched", authMiddleware, async (req, res) => {
   }
 });
 
-/** Current stocks data from Redis cache only (no fetch). 404 if not cached. */
 stocksRouter.get("/portfolio-cache", authMiddleware, async (req, res) => {
   const { userId } = req as AuthRequest;
   res.setHeader("X-RateLimit-Info", RATE_LIMIT_HEADER);
@@ -317,14 +310,6 @@ stocksRouter.get("/portfolio-cache", authMiddleware, async (req, res) => {
     console.error("Error reading portfolio cache:", error);
     res.status(500).json({ message: "Internal server error" });
   }
-});
-
-// Hint when user hits the wrong path (e.g. profile-enriched instead of portfolio-enriched)
-stocksRouter.get("/profile-enriched", (_req, res) => {
-  res.status(404).json({
-    error: "Not found. Use GET /api/v1/stocks/portfolio-enriched (not profile-enriched).",
-    correctPath: "/api/v1/stocks/portfolio-enriched",
-  });
 });
 
 stocksRouter.get("/:symbol", (req, res) => {

@@ -150,7 +150,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Right: Account Setting title + Card (1.4x width: 28rem * 1.4 ≈ 39.2rem) */}
       <div className="w-full min-w-0 flex flex-col gap-10 text-left max-w-[39.2rem]">
         <div className="w-full text-left">
           <h1 className="text-2xl font-semibold text-white/95 mb-1">

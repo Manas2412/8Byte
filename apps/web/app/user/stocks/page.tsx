@@ -11,12 +11,11 @@ import {
   TableRow,
 } from "@/app/components/ui/table";
 import { Button } from "@/app/components/ui/button";
-// ws-frontend: only for 15s poll of CMP, present value, Gain/Loss, P/E (see FRONTEND_FLOW.md)
+
 import { usePortfolioWithUpdates } from "ws-frontend";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-/** Must match StockIndustry enum in schema.prisma */
 const STOCK_INDUSTRIES = [
   "Healthcare",
   "Finance",
@@ -50,7 +49,6 @@ function formatPercent(n: number): string {
 export default function UserStocksPage() {
   const [industryFilter, setIndustryFilter] = useState<string>(INDUSTRY_FILTER_ALL);
 
-  // Dynamic data (CMP, PV, G/L, P/E) from backend every 15s; rest of data/updates via backend-server
   const { stocks, loading, error, refresh } = usePortfolioWithUpdates({
     getToken,
     apiUrl: API_URL,

@@ -8,7 +8,7 @@ import { buildEnrichedPortfolio } from "./portfolioEnrich.js";
 
 const REFRESH_INTERVAL_MS = Number(
   process.env.PORTFOLIO_REFRESH_INTERVAL_MS ?? 15_000
-); // 15 seconds default
+); 
 
 export function startPortfolioRefreshJob(): void {
   const client = getRedis();
@@ -51,7 +51,7 @@ export function startPortfolioRefreshJob(): void {
     }
   }
 
-  refresh(); // run once immediately
+  refresh(); 
   setInterval(refresh, REFRESH_INTERVAL_MS);
   console.log(
     `[portfolio-refresh] Started: refreshing portfolio cache every ${REFRESH_INTERVAL_MS / 1000}s`

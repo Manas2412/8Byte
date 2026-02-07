@@ -1,10 +1,4 @@
-/**
- * Build enriched portfolio using NSE (CMP, P/E, present value, gain/loss).
- * Always call from backend/ws-server; never from frontend.
- * Cache responses (Redis / in-memory); limit requests (e.g. 1 per symbol per minute); never scrape on every page load.
- */
 
-/** NSE expects plain symbol (e.g. RELIANCE, TCS). Strip .NS/.BO and uppercase. */
 function toNseSymbol(symbol: string, _exchange: string): string {
   const s = symbol.trim().toUpperCase();
   if (s.endsWith(".NS") || s.endsWith(".BO")) return s.slice(0, -3);
@@ -31,7 +25,6 @@ const BROWSER_HEADERS = {
  * Flow: NSE (all data) → on failure Yahoo (CMP only) → Google (P/E + latest earnings).
  */
 
-/** Yahoo Finance v8 chart: CMP only. Use when NSE fails. Symbol e.g. TCS.NS */
 async function fetchYahooCmp(
   yahooSymbol: string
 ): Promise<{ cmp: number | null; previousClose: number | null }> {
@@ -64,7 +57,6 @@ async function fetchYahooCmp(
   }
 }
 
-/** Google Finance quote page: P/E and latest earnings (when NSE fails). */
 async function fetchGooglePeAndEarnings(
   nseSymbol: string
 ): Promise<{ peRatio: number | null; latestEarnings: string | null }> {
@@ -115,7 +107,6 @@ async function fetchGooglePeAndEarnings(
   }
 }
 
-/** NSE with session + delay; fallback to Yahoo on 403. */
 async function fetchQuote(nseSymbol: string): Promise<QuoteResult> {
   const { getQuoteCache, setQuoteCache } = await import("cached-db/client");
   const cached = (await getQuoteCache(nseSymbol, "nse")) as QuoteResult | null;

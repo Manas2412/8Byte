@@ -7,11 +7,8 @@ import type { EnrichedStock, PortfolioEnrichedPayload } from "./types";
 export const DEFAULT_POLL_INTERVAL_MS = 15_000;
 
 export type UsePortfolioWithUpdatesOptions = {
-  /** Returns the auth token (e.g. from localStorage). */
   getToken: () => string | null;
-  /** Base API URL. Default: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001" */
   apiUrl?: string;
-  /** Refresh interval in ms. Default: 15000 (15 seconds). */
   intervalMs?: number;
 };
 
@@ -19,7 +16,6 @@ export type UsePortfolioWithUpdatesResult = {
   stocks: EnrichedStock[];
   loading: boolean;
   error: string | null;
-  /** Manually trigger a refresh. */
   refresh: () => Promise<void>;
 };
 
@@ -76,7 +72,6 @@ async function fetchPortfolio(
   if (enrichedRes.status === 401) {
     throw new Error("UNAUTHORIZED");
   }
-  // 202 = queued for refresh; backend may have cache ready shortly
   if (enrichedRes.status === 202) {
     for (let i = 0; i < RETRY_AFTER_202_ATTEMPTS; i++) {
       await new Promise((r) => setTimeout(r, RETRY_AFTER_202_DELAY_MS));
@@ -138,7 +133,7 @@ async function fetchPortfolio(
 
 /**
  * Fetches portfolio once, then refetches at regular intervals so that
- * CMP, Present Value, and Gain/Loss update automatically (e.g. every 15 seconds).
+ * CMP, Present Value, and Gain/Loss update automatically.
  */
 export function usePortfolioWithUpdates(
   options: UsePortfolioWithUpdatesOptions

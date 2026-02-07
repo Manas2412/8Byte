@@ -1,12 +1,4 @@
-/**
- * Shared logic to build enriched portfolio (profile stocks + NSE CMP, P/E, present value, gain/loss).
- * Used by GET /portfolio-enriched. Always call from backend; never from frontend.
- *
- * NSE: unofficial API. Rate limited: 1 req per symbol per minute via Redis.
- * Cache responses (Redis / in-memory); never fetch on every page load.
- */
 
-/** NSE expects plain symbol (e.g. RELIANCE, TCS). Strip .NS/.BO and uppercase. */
 function toNseSymbol(symbol: string, _exchange: string): string {
   const s = symbol.trim().toUpperCase();
   if (s.endsWith(".NS") || s.endsWith(".BO")) return s.slice(0, -3);
@@ -33,7 +25,7 @@ const BROWSER_HEADERS = {
  * Flow: NSE (all data) → on failure Yahoo (CMP only) → Google (P/E + latest earnings).
  */
 
-/** Yahoo Finance v8 chart: CMP only. Use when NSE fails. Symbol e.g. TCS.NS */
+/** Yahoo Finance v8 chart: CMP only. */
 async function fetchYahooCmp(yahooSymbol: string): Promise<{ cmp: number | null; previousClose: number | null }> {
   const { getQuoteCache, setQuoteCache } = await import("cached-db/client");
   const cached = (await getQuoteCache(yahooSymbol, "yahoo")) as { cmp: number | null; previousClose: number | null } | null;
@@ -66,7 +58,7 @@ async function fetchYahooCmp(yahooSymbol: string): Promise<{ cmp: number | null;
   }
 }
 
-/** Google Finance quote page: P/E and latest earnings (when NSE fails). */
+/** Google Finance quote page: P/E and latest earnings */
 async function fetchGooglePeAndEarnings(
   nseSymbol: string
 ): Promise<{ peRatio: number | null; latestEarnings: string | null }> {

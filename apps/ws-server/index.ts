@@ -1,4 +1,3 @@
-// Only load .env when not set (e.g. Docker Compose sets DATABASE_URL, REDIS_URL)
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 if (!process.env.DATABASE_URL || !process.env.REDIS_URL) {
@@ -14,7 +13,6 @@ import { startPortfolioQueueWorker } from "./queueWorker.js";
 const HTTP_PORT = Number(process.env.WS_HTTP_PORT ?? 8081);
 const WS_PORT = Number(process.env.WS_PORT ?? 8080);
 
-// ----- HTTP API: enqueue refresh (worker processes batch-wise to avoid API overload) -----
 Bun.serve({
   port: HTTP_PORT,
   async fetch(req) {
@@ -67,13 +65,12 @@ Bun.serve({
 console.log(`📡 WS-server HTTP API on http://localhost:${HTTP_PORT}`);
 console.log("[ws-server] Rate limiting & safety: Cache responses (Redis / in-memory); limit requests (e.g. 1 request per symbol per minute); never scrape on every page load.");
 
-// ----- Queue worker: consumes stream in batches, delay between batches to avoid Yahoo/Google rate limit -----
+// Queue worker: consumes stream in batches, delay between batches to avoid Yahoo/Google rate limit 
 startPortfolioQueueWorker();
 
-// ----- 15s job: pushes user ids to same stream (worker processes them batch-wise) -----
+// 15s job: pushes user ids to same stream (worker processes them batch-wise)
 startPortfolioRefreshJob();
 
-// ----- WebSocket server (separate port from HTTP) -----
 const wss = new WebSocketServer({ port: WS_PORT });
 console.log(`🚀 WebSocket server on ws://localhost:${WS_PORT}`);
 

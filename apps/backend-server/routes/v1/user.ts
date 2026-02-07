@@ -34,7 +34,6 @@ usersRouter.post("/sign-up", async (req, res) => {
     });
 
     if (existingUser) {
-      // Existing user – redirect to sign-in page on the web app
       res.redirect(303, "/sign-in");
       return;
     }

@@ -1,21 +1,9 @@
-/**
- * Shared Redis cache for portfolio-enriched data.
- * Use in backend-server and ws-server via: import { ... } from "cached-db/client"
- *
+/*
  * FLOW:
  * 1. Request → backend-server → cached-db (getPortfolioEnrichedCache).
  *    - If cache HIT: return data to client.
  * 2. If cache MISS: backend-server → ws-server POST /refresh-portfolio → push userId to Redis stream (queue).
- * 3. Queue worker (ws-server) consumes stream in batches, fetches data (Yahoo/Google), writes to cached-db (setPortfolioEnrichedCache).
- * 4. Client gets data: backend polls cache after 202, or client polls GET /portfolio-cache / retries.
- * 5. Every 15s: ws-server job pushes all users with portfolios to the same stream; worker processes and overwrites cache with fresh data (cache is updated, not explicitly reset).
- *
- * Rate limiting & safety: We cache NSE (and optionally other) quote responses per symbol in Redis (1 request per symbol per minute).
- * Never scrape on every page load; all live data is fetched only in the queue worker with delays between batches.
- *
- * Set REDIS_URL in your app .env:
- *   REDIS_URL="redis://127.0.0.1:6379"
- * (Use 127.0.0.1 if redis://localhost gives getaddrinfo ENOTFOUND.)
+ * 3. Every 15s: ws-server job pushes all users with portfolios to the same stream; worker processes and overwrites cache with fresh data (cache is updated, not explicitly reset).
  */
 
 import Redis from "ioredis";
@@ -74,14 +62,9 @@ export async function getPortfolioEnrichedCache(
 
 export { CACHE_TTL_SECONDS };
 
-// ----- Per-symbol quote cache (rate limiting: 1 request per symbol per minute) -----
 
-const QUOTE_CACHE_TTL_SECONDS = Number(process.env.QUOTE_CACHE_TTL ?? 60);
+const QUOTE_CACHE_TTL_SECONDS = Number(process.env.QUOTE_CACHE_TTL ?? 30);
 
-/**
- * Get cached quote data for a symbol. Used to respect rate limits:
- * 1 request per symbol per minute. Never scrape/fetch on every page load.
- */
 export async function getQuoteCache(
   symbol: string,
   source: "yahoo" | "google" | "nse"
@@ -98,9 +81,6 @@ export async function getQuoteCache(
   }
 }
 
-/**
- * Set cached quote data for a symbol. TTL defaults to 60s (1 req per symbol per minute).
- */
 export async function setQuoteCache(
   symbol: string,
   source: "yahoo" | "google" | "nse",
@@ -115,12 +95,11 @@ export async function setQuoteCache(
 
 export { QUOTE_CACHE_TTL_SECONDS };
 
-// ----- Redis Stream queue (portfolio refresh – batch processing to avoid API overload) -----
+// Redis Stream queue (portfolio refresh – batch processing to avoid API overload) 
 
 export const PORTFOLIO_REFRESH_STREAM = "portfolio:refresh:stream";
 export const PORTFOLIO_REFRESH_GROUP = "portfolio-refresh-group";
 
-/** Push a userId to the refresh stream (returns message id or null). */
 export async function pushPortfolioRefreshToStream(
   userId: string
 ): Promise<string | null> {
@@ -135,7 +114,6 @@ export async function pushPortfolioRefreshToStream(
   return id;
 }
 
-/** Ensure consumer group exists (call once before reading). */
 export async function ensurePortfolioRefreshConsumerGroup(): Promise<boolean> {
   const client = getRedis();
   if (!client) return false;
@@ -149,7 +127,7 @@ export async function ensurePortfolioRefreshConsumerGroup(): Promise<boolean> {
     );
   } catch (e: unknown) {
     const err = e as { message?: string };
-    if (err?.message?.includes("BUSYGROUP")) return true; // already exists
+    if (err?.message?.includes("BUSYGROUP")) return true; 
     throw e;
   }
   return true;
@@ -157,7 +135,7 @@ export async function ensurePortfolioRefreshConsumerGroup(): Promise<boolean> {
 
 export type PortfolioRefreshMessage = { streamId: string; userId: string };
 
-/** Read a batch of pending refresh requests (for worker). blockMs = 0 for non-blocking. */
+/** Read a batch of pending refresh requests (for worker)*/
 export async function readPortfolioRefreshBatch(
   consumerName: string,
   options: { batchSize?: number; blockMs?: number } = {}

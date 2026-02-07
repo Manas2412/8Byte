@@ -13,12 +13,11 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
-// ws-frontend: only for 15s poll of CMP, present value, Gain/Loss, P/E (see FRONTEND_FLOW.md)
+// ws-frontend: only for 15s poll 
 import { usePortfolioWithUpdates, type EnrichedStock } from "ws-frontend";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-/** Must match StockIndustry enum in schema.prisma */
 const STOCK_INDUSTRIES = [
   "Healthcare",
   "Finance",
@@ -78,7 +77,6 @@ export default function UserPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
 
-  // Dynamic data (CMP, PV, G/L, P/E) from backend every 15s; all other data/updates via backend-server
   const { stocks: tableStocks, loading: stocksLoading, error: stocksError, refresh } = usePortfolioWithUpdates({
     getToken,
     apiUrl: API_URL,

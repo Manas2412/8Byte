@@ -1,7 +1,3 @@
-/**
- * Consumes portfolio refresh requests from Redis Stream in batches.
- * Processes with delay between batches to avoid Yahoo/Google API rate limits.
- */
 
 import {
   getRedis,

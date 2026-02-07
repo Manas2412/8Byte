@@ -4,9 +4,8 @@ const REFRESH_INTERVAL_MS = Number(
   process.env.PORTFOLIO_REFRESH_INTERVAL_MS ?? 15_000
 );
 
-/**
+/*
  * Every 15s: push all users with portfolios to the Redis stream.
- * Queue worker consumes batch-wise, fetches fresh data, and overwrites cached-db (no explicit cache reset).
  */
 export function startPortfolioRefreshJob(): void {
   const client = getRedis();
