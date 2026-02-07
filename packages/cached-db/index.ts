@@ -10,6 +10,9 @@
  * 4. Client gets data: backend polls cache after 202, or client polls GET /portfolio-cache / retries.
  * 5. Every 15s: ws-server job pushes all users with portfolios to the same stream; worker processes and overwrites cache with fresh data (cache is updated, not explicitly reset).
  *
+ * Rate limiting & safety: We cache NSE (and optionally other) quote responses per symbol in Redis (1 request per symbol per minute).
+ * Never scrape on every page load; all live data is fetched only in the queue worker with delays between batches.
+ *
  * Set REDIS_URL in your app .env:
  *   REDIS_URL="redis://127.0.0.1:6379"
  * (Use 127.0.0.1 if redis://localhost gives getaddrinfo ENOTFOUND.)
@@ -70,6 +73,47 @@ export async function getPortfolioEnrichedCache(
 }
 
 export { CACHE_TTL_SECONDS };
+
+// ----- Per-symbol quote cache (rate limiting: 1 request per symbol per minute) -----
+
+const QUOTE_CACHE_TTL_SECONDS = Number(process.env.QUOTE_CACHE_TTL ?? 60);
+
+/**
+ * Get cached quote data for a symbol. Used to respect rate limits:
+ * 1 request per symbol per minute. Never scrape/fetch on every page load.
+ */
+export async function getQuoteCache(
+  symbol: string,
+  source: "yahoo" | "google" | "nse"
+): Promise<unknown | null> {
+  const client = getRedis();
+  if (!client) return null;
+  const key = `quote:${source}:${symbol}`;
+  const raw = await client.get(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Set cached quote data for a symbol. TTL defaults to 60s (1 req per symbol per minute).
+ */
+export async function setQuoteCache(
+  symbol: string,
+  source: "yahoo" | "google" | "nse",
+  data: unknown,
+  ttlSeconds: number = QUOTE_CACHE_TTL_SECONDS
+): Promise<void> {
+  const client = getRedis();
+  if (!client) return;
+  const key = `quote:${source}:${symbol}`;
+  await client.setex(key, ttlSeconds, JSON.stringify(data));
+}
+
+export { QUOTE_CACHE_TTL_SECONDS };
 
 // ----- Redis Stream queue (portfolio refresh – batch processing to avoid API overload) -----
 

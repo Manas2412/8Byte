@@ -1,9 +1,9 @@
 import { Router } from "express";
 import authMiddleware, { type AuthRequest } from "./middleware.js";
-import { getPortfolioEnrichedCache } from "cached-db/client";
+import { getPortfolioEnrichedCache, setPortfolioEnrichedCache } from "cached-db/client";
+import { buildEnrichedPortfolio } from "../../lib/portfolioEnrich.js";
 
 const WS_SERVER_URL = process.env.WS_SERVER_URL ?? "http://localhost:8081";
-const WS_FETCH_TIMEOUT_MS = Number(process.env.WS_FETCH_TIMEOUT_MS ?? 15_000);
 
 let prismaPromise: Promise<typeof import("db/client").default> | null = null;
 function getPrisma() {
@@ -140,80 +140,162 @@ stocksRouter.delete("/", authMiddleware, async (req, res) => {
   }
 });
 
+const RATE_LIMIT_HEADER =
+  "Cache responses (Redis / in-memory); limit requests (e.g. 1 request per symbol per minute); never scrape on every page load.";
+
 /**
- * Flow: check cached-db first (cache hit → return). On miss: POST ws-server → push to Redis queue;
- * worker fetches data and updates cache; we poll cache or return 202 for client to poll /portfolio-cache.
+ * Flow: check cached-db first (cache hit → return). On miss: build enriched in backend (rate-limited
+ * via Redis quote cache), write to cache, return so frontend gets live data immediately.
+ * Optionally queue refresh on ws-server for 15s job to keep cache warm.
  */
 stocksRouter.get("/portfolio-enriched", authMiddleware, async (req, res) => {
   const { userId } = req as AuthRequest;
+  console.log("[backend] GET /portfolio-enriched for userId:", userId?.slice(0, 8) + "...");
+  res.setHeader("X-RateLimit-Info", RATE_LIMIT_HEADER);
   try {
-    const cached = await getPortfolioEnrichedCache(userId);
-    if (cached != null) {
-      console.log("[backend] portfolio-enriched: cache HIT for", userId);
-      res.json(cached);
-      return;
-    }
-
-    console.log("[backend] portfolio-enriched: cache MISS for", userId, "- calling ws-server");
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), WS_FETCH_TIMEOUT_MS);
-
-    let refreshRes: Response;
+    let cached: unknown = null;
     try {
-      refreshRes = await fetch(`${WS_SERVER_URL}/refresh-portfolio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
+      cached = await getPortfolioEnrichedCache(userId);
+    } catch (e) {
+      console.warn("[backend] portfolio-enriched: cache read failed (treating as miss):", e);
     }
-
-    if (refreshRes.status === 202) {
-      const body = (await refreshRes.json()) as { queued: boolean; userId: string };
-      const pollAttempts = 8;
-      const pollIntervalMs = 1500;
-      for (let i = 0; i < pollAttempts; i++) {
-        await new Promise((r) => setTimeout(r, pollIntervalMs));
-        const cached = await getPortfolioEnrichedCache(userId);
-        if (cached != null) {
-          res.json(cached);
-          return;
-        }
+    if (cached != null && typeof cached === "object" && Array.isArray((cached as { stocks?: unknown }).stocks)) {
+      const body = cached as { id: string; name: string; email: string; stocks: unknown[]; totalInvestment: number; cachedAt: string };
+      const hasLiveData = body.stocks.some((s: unknown) => {
+        const row = s as Record<string, unknown>;
+        const cmp = row.cmp != null ? Number(row.cmp) : null;
+        const pp = row.purchasePrice != null ? Number(row.purchasePrice) : null;
+        if (cmp == null || cmp <= 0) return false;
+        if (row.peRatio != null && Number(row.peRatio) > 0) return true;
+        if (pp != null && Math.abs(cmp - pp) > 0.01) return true;
+        return false;
+      });
+      if (hasLiveData) {
+        console.log("[backend] portfolio-enriched: cache HIT (with live data) for", userId);
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        const normalizedStocks = body.stocks.map((s: unknown) => {
+          const row = s as Record<string, unknown>;
+          return {
+            id: row.id,
+            stockName: row.stockName,
+            symbol: row.symbol,
+            industry: row.industry,
+            exchange: row.exchange ?? "NSE",
+            purchasePrice: row.purchasePrice != null ? Number(row.purchasePrice) : 0,
+            quantity: row.quantity,
+            investment: row.investment != null ? Number(row.investment) : 0,
+            cmp: row.cmp != null ? Number(row.cmp) : undefined,
+            presentValue: row.presentValue != null ? Number(row.presentValue) : (row.investment != null ? Number(row.investment) : 0),
+            gainLoss: row.gainLoss != null ? Number(row.gainLoss) : 0,
+            peRatio: row.peRatio != null ? Number(row.peRatio) : undefined,
+            latestEarnings: row.latestEarnings != null ? String(row.latestEarnings) : undefined,
+            portfolioPercent: row.portfolioPercent != null ? Number(row.portfolioPercent) : 0,
+          };
+        });
+        res.json({ ...body, stocks: normalizedStocks });
+        return;
       }
-      res.status(202).json({
-        message: "Queued for refresh. Poll GET /api/v1/stocks/portfolio-cache or retry shortly.",
-        userId: body.userId,
-      });
+      console.log("[backend] portfolio-enriched: cache STALE (no live CMP) for", userId, "- rebuilding");
+    }
+
+    console.log("[backend] portfolio-enriched: cache MISS for", userId, "- building enriched (rate-limited)");
+    const prisma = await getPrisma();
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { portfolio: { include: { stocks: true } } },
+    });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+    if (!user.portfolio?.stocks?.length) {
+      const empty = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        stocks: [],
+        totalInvestment: 0,
+        cachedAt: new Date().toISOString(),
+      };
+      try {
+        await setPortfolioEnrichedCache(userId, empty);
+      } catch (_) {}
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.json(empty);
       return;
     }
 
-    if (!refreshRes.ok) {
-      const text = await refreshRes.text();
-      console.error("ws-server /refresh-portfolio error:", refreshRes.status, text);
-      res.status(502).json({
-        message: "Portfolio refresh failed. Ensure ws-server is running and REDIS_URL is set.",
+    let payload: { id: string; name: string; email: string; stocks: unknown[]; totalInvestment: number; cachedAt: string } | null = null;
+    try {
+      payload = await buildEnrichedPortfolio(user as Parameters<typeof buildEnrichedPortfolio>[0]);
+    } catch (buildErr) {
+      console.error("[backend] buildEnrichedPortfolio failed, returning fallback with derived values:", buildErr);
+    }
+    if (payload?.stocks?.length) {
+      try {
+        await setPortfolioEnrichedCache(userId, payload);
+      } catch (_) {}
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.json(payload);
+    } else {
+      // Fallback: use DB-only data so frontend still shows presentValue/gainLoss (using purchase price as CMP)
+      const totalInvestment = user.portfolio!.stocks.reduce((sum, s) => sum + Number(s.investment), 0);
+      const stocks = user.portfolio!.stocks.map((s) => {
+        const inv = Number(s.investment);
+        const qty = s.purchasedQuantity;
+        const price = Number(s.purchasedPrice);
+        const pv = Math.round(price * qty * 100) / 100;
+        const gl = Math.round((pv - inv) * 100) / 100;
+        const portfolioPercent = totalInvestment > 0 ? Math.round((inv / totalInvestment) * 10000) / 100 : 0;
+        return {
+          id: (s as { id: string }).id,
+          stockName: s.name,
+          symbol: s.symbol,
+          industry: (s as { industry?: string }).industry,
+          exchange: (s as { exchange?: string }).exchange ?? "NSE",
+          purchasePrice: price,
+          quantity: qty,
+          investment: inv,
+          cmp: price,
+          presentValue: pv,
+          gainLoss: gl,
+          portfolioPercent,
+        };
       });
-      return;
+      const fallback = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        stocks,
+        totalInvestment,
+        cachedAt: new Date().toISOString(),
+      };
+      try {
+        await setPortfolioEnrichedCache(userId, fallback);
+      } catch (_) {}
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.json(fallback);
     }
 
-    const payload = (await refreshRes.json()) as unknown;
-    res.json(payload);
+    // Optional: queue refresh on ws-server so 15s job keeps cache warm (fire-and-forget)
+    fetch(`${WS_SERVER_URL}/refresh-portfolio`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    })
+      .then((r) => {
+        if (r.status === 202) console.log("[backend] Queued refresh on ws-server for", userId.slice(0, 8) + "...");
+        else console.warn("[backend] ws-server /refresh-portfolio returned", r.status);
+      })
+      .catch((e) => console.warn("[backend] ws-server /refresh-portfolio request failed:", (e as Error).message));
   } catch (error: unknown) {
-    const isTimeout =
-      error instanceof Error &&
-      (error.name === "TimeoutError" || error.name === "AbortError");
-    if (isTimeout) {
-      console.error("portfolio-enriched: ws-server request timed out. Is ws-server running at", WS_SERVER_URL);
-      res.status(504).json({
-        message: "Portfolio refresh timed out. Ensure ws-server is running and reachable at WS_SERVER_URL.",
-      });
-      return;
-    }
     console.error("Error in portfolio-enriched:", error);
     res.status(500).json({
-      message: "Internal server error. Ensure ws-server is reachable at WS_SERVER_URL.",
+      message: "Internal server error. Check REDIS_URL and database connection.",
     });
   }
 });
@@ -221,6 +303,7 @@ stocksRouter.get("/portfolio-enriched", authMiddleware, async (req, res) => {
 /** Current stocks data from Redis cache only (no fetch). 404 if not cached. */
 stocksRouter.get("/portfolio-cache", authMiddleware, async (req, res) => {
   const { userId } = req as AuthRequest;
+  res.setHeader("X-RateLimit-Info", RATE_LIMIT_HEADER);
   try {
     const cached = await getPortfolioEnrichedCache(userId);
     if (cached == null) {

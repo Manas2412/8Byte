@@ -2,7 +2,6 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import authMiddleware, { type AuthRequest } from "./middleware.js";
 import bcrypt from "bcrypt";
-import "dotenv/config";
 import { CreateUserSchema, SigninSchema } from "common/types";
 import { JWT_SECRET } from "backend-common/config";
 

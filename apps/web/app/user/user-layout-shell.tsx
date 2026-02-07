@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,8 +8,6 @@ import {
   TrendingUp,
   User,
   LogOut,
-  Mail,
-  Bell,
 } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 
@@ -27,8 +25,12 @@ export default function UserLayoutShell({
 }) {
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
+  const authChecked = useRef(false);
 
   useEffect(() => {
+    if (authChecked.current) return;
+    authChecked.current = true;
+
     const token = getToken();
     if (!token) {
       window.location.href = "/sign-in";
@@ -36,6 +38,7 @@ export default function UserLayoutShell({
     }
     fetch(`${API_URL}/api/v1/users/profile`, {
       headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
     })
       .then((res) => {
         if (res.status === 401) {

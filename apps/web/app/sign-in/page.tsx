@@ -95,9 +95,9 @@ export default function SignInPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed.data),
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.redirected || res.status === 303) {
-        window.location.href = "/user";
+      const data = (await res.json().catch(() => ({}))) as { message?: string; token?: string };
+      if (res.redirected) {
+        window.location.href = "/sign-up";
         return;
       }
       if (!res.ok) {
@@ -107,8 +107,10 @@ export default function SignInPage() {
       const token = data.token;
       if (token && typeof window !== "undefined") {
         localStorage.setItem("token", token);
+        window.location.href = "/user";
+      } else {
+        setError("Sign-in succeeded but no token received.");
       }
-      window.location.href = "/user";
     } catch {
       setError("Network error. Is the backend running?");
     } finally {

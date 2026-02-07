@@ -23,32 +23,92 @@ export type UsePortfolioWithUpdatesResult = {
   refresh: () => Promise<void>;
 };
 
+const RETRY_AFTER_202_ATTEMPTS = 6;
+const RETRY_AFTER_202_DELAY_MS = 2000;
+
+/** Ensure every stock has presentValue and gainLoss for display (derive from investment if missing). */
+function normalizeStocks(
+  rows: Array<Record<string, unknown> & { investment?: number; presentValue?: number; gainLoss?: number }>
+): EnrichedStock[] {
+  return rows.map((row) => {
+    const inv = Number(row.investment ?? 0);
+    const pv = row.presentValue != null ? Number(row.presentValue) : inv;
+    const gl = row.gainLoss != null ? Number(row.gainLoss) : 0;
+    return {
+      ...row,
+      investment: inv,
+      presentValue: pv,
+      gainLoss: gl,
+    } as EnrichedStock;
+  });
+}
+
 async function fetchPortfolio(
   apiUrl: string,
   headers: HeadersInit
 ): Promise<EnrichedStock[]> {
-  const enrichedRes = await fetch(`${apiUrl}/api/v1/stocks/portfolio-enriched`, {
-    headers,
-  });
+  let enrichedRes: Response;
+  try {
+    enrichedRes = await fetch(`${apiUrl}/api/v1/stocks/portfolio-enriched`, {
+      headers,
+      cache: "no-store",
+      credentials: "include",
+    });
+  } catch (networkErr) {
+    const profileRes = await fetch(`${apiUrl}/api/v1/users/profile`, {
+      headers,
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (profileRes.status === 401) throw new Error("UNAUTHORIZED");
+    if (!profileRes.ok) throw new Error("Failed to load profile");
+    const profile = (await profileRes.json()) as { stocks?: Array<Record<string, unknown> & { investment?: number }> };
+    const raw = profile.stocks ?? [];
+    return normalizeStocks(
+      raw.map((s) => ({ ...s, investment: s.investment ?? 0, presentValue: s.investment, gainLoss: 0 }))
+    );
+  }
   if (enrichedRes.ok) {
     const data = (await enrichedRes.json()) as PortfolioEnrichedPayload;
-    return data.stocks ?? [];
+    const raw = data.stocks ?? [];
+    return normalizeStocks(raw);
   }
   if (enrichedRes.status === 401) {
     throw new Error("UNAUTHORIZED");
   }
+  // 202 = queued for refresh; backend may have cache ready shortly
+  if (enrichedRes.status === 202) {
+    for (let i = 0; i < RETRY_AFTER_202_ATTEMPTS; i++) {
+      await new Promise((r) => setTimeout(r, RETRY_AFTER_202_DELAY_MS));
+      const retryRes = await fetch(`${apiUrl}/api/v1/stocks/portfolio-enriched`, {
+        headers,
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (retryRes.ok) {
+        const data = (await retryRes.json()) as PortfolioEnrichedPayload;
+        return normalizeStocks(data.stocks ?? []);
+      }
+      if (retryRes.status === 401) throw new Error("UNAUTHORIZED");
+    }
+  }
+
   const cacheRes = await fetch(`${apiUrl}/api/v1/stocks/portfolio-cache`, {
     headers,
+    cache: "no-store",
+    credentials: "include",
   });
   if (cacheRes.ok) {
     const data = (await cacheRes.json()) as PortfolioEnrichedPayload;
-    return data.stocks ?? [];
+    return normalizeStocks(data.stocks ?? []);
   }
   if (cacheRes.status === 401) {
     throw new Error("UNAUTHORIZED");
   }
   const profileRes = await fetch(`${apiUrl}/api/v1/users/profile`, {
     headers,
+    cache: "no-store",
+    credentials: "include",
   });
   if (profileRes.status === 401) {
     throw new Error("UNAUTHORIZED");
@@ -57,8 +117,23 @@ async function fetchPortfolio(
     const err = (await profileRes.json().catch(() => ({}))) as { message?: string };
     throw new Error(err.message ?? "Failed to load profile");
   }
-  const profile = (await profileRes.json()) as { stocks: EnrichedStock[] };
-  return profile.stocks ?? [];
+  const profile = (await profileRes.json()) as {
+    stocks: Array<{
+      id?: string;
+      stockName: string;
+      symbol?: string;
+      industry?: string | null;
+      investment: number;
+      purchasePrice?: number;
+      quantity?: number;
+      portfolioPercent?: number;
+      exchange?: string;
+    }>;
+  };
+  const raw = profile.stocks ?? [];
+  return normalizeStocks(
+    raw.map((s) => ({ ...s, investment: s.investment ?? 0, presentValue: s.investment, gainLoss: 0 }))
+  );
 }
 
 /**
@@ -81,7 +156,10 @@ export function usePortfolioWithUpdates(
 
   const runFetch = useCallback(async () => {
     const token = getToken();
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     const headers: HeadersInit = { Authorization: `Bearer ${token}` };
     try {
       const next = await fetchPortfolio(apiUrl, headers);

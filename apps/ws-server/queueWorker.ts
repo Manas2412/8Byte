@@ -42,6 +42,7 @@ export function startPortfolioQueueWorker(): void {
 
       const prisma = (await import("db/client")).default;
 
+      const processed: string[] = [];
       for (const { streamId, userId } of messages) {
         try {
           const user = await prisma.user.findUnique({
@@ -59,6 +60,7 @@ export function startPortfolioQueueWorker(): void {
           const payload = await buildEnrichedPortfolio(user);
           if (payload) {
             await setPortfolioEnrichedCache(userId, payload);
+            processed.push(userId.slice(0, 8) + "...");
           } else {
             const empty = {
               id: user.id,
@@ -69,12 +71,16 @@ export function startPortfolioQueueWorker(): void {
               cachedAt: new Date().toISOString(),
             };
             await setPortfolioEnrichedCache(userId, empty);
+            processed.push(userId.slice(0, 8) + "...(empty)");
           }
           await ackPortfolioRefresh(streamId);
         } catch (err) {
           console.error(`[ws-server] Queue worker failed for ${userId}:`, err);
           await ackPortfolioRefresh(streamId);
         }
+      }
+      if (processed.length > 0) {
+        console.log("[ws-server] Queue processed batch:", processed.length, "user(s)", processed.join(", "));
       }
 
       if (DELAY_BETWEEN_BATCHES_MS > 0) {

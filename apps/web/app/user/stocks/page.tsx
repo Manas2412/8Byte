@@ -51,7 +51,7 @@ export default function UserStocksPage() {
   const [industryFilter, setIndustryFilter] = useState<string>(INDUSTRY_FILTER_ALL);
 
   // Dynamic data (CMP, PV, G/L, P/E) from backend every 15s; rest of data/updates via backend-server
-  const { stocks, loading, error } = usePortfolioWithUpdates({
+  const { stocks, loading, error, refresh } = usePortfolioWithUpdates({
     getToken,
     apiUrl: API_URL,
     intervalMs: 15_000,
@@ -92,14 +92,25 @@ export default function UserStocksPage() {
     return (
       <div className="flex flex-col gap-4">
         <p className="text-white/90">{error}</p>
-        <Button asChild variant="outline" className="border-white/30 text-white w-fit">
-          <Link href="/sign-in">Sign in</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="border-white/30 text-white w-fit"
+            onClick={() => refresh()}
+          >
+            Retry
+          </Button>
+          {error === "UNAUTHORIZED" && (
+            <Button asChild variant="outline" className="border-white/30 text-white w-fit">
+              <Link href="/sign-in">Sign in</Link>
+            </Button>
+          )}
+        </div>
       </div>
     );
   }
 
-  const colCount = 11;
+  const colCount = 10;
 
   return (
     <div className="text-white p-[15px]">
@@ -185,9 +196,8 @@ export default function UserStocksPage() {
               <TableHead className="text-white/90 font-medium text-center">NSE/BSE</TableHead>
               <TableHead className="text-white/90 font-medium text-right">CMP</TableHead>
               <TableHead className="text-white/90 font-medium text-right">Present value</TableHead>
-              <TableHead className="text-white/90 font-medium text-right">Gain/Loss</TableHead>
               <TableHead className="text-white/90 font-medium text-right">P/E Ratio</TableHead>
-              <TableHead className="text-white/90 font-medium text-right">Latest Earnings</TableHead>
+              <TableHead className="text-white/90 font-medium text-right">Gain/Loss</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -239,6 +249,9 @@ export default function UserStocksPage() {
                       : "—"}
                   </TableCell>
                   <TableCell className="text-right text-white/90">
+                    {row.peRatio != null ? row.peRatio.toFixed(2) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-white/90">
                     {row.gainLoss != null ? (
                       <span
                         className={
@@ -251,12 +264,6 @@ export default function UserStocksPage() {
                     ) : (
                       "—"
                     )}
-                  </TableCell>
-                  <TableCell className="text-right text-white/90">
-                    {row.peRatio != null ? row.peRatio.toFixed(2) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right text-white/90">
-                    {row.latestEarnings ?? "—"}
                   </TableCell>
                 </TableRow>
               ))

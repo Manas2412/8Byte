@@ -1,0 +1,114 @@
+# 8Byte – Postgres, Redis, backend, ws-server, web on one network
+# All services can talk via service names (postgres, redis, backend, ws-server, web).
+# Run: docker compose up --build
+# Web: http://localhost:3000  |  API: http://localhost:3001
+#
+# First time: run DB migrations (from repo root):
+#   docker compose run --rm backend sh -c "cd /app/packages/db && bunx prisma migrate deploy"
+#
+# Postgres/Redis use host ports 5433/6380 to avoid conflict with local 5432/6379.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mydb
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend-server/Dockerfile
+    image: 8byte-backend
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/mydb"
+      REDIS_URL: "redis://redis:6379"
+      WS_SERVER_URL: "http://ws-server:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Export in shell so Bun/process definitely sees Docker hostnames (not overridden by .env)
+    command:
+      - sh
+      - -c
+      - export DATABASE_URL="postgresql://postgres:postgres@postgres:5432/mydb" REDIS_URL="redis://redis:6379" WS_SERVER_URL="http://ws-server:8081" PORT="3001" && sleep 3 && exec bun run dev
+    restart: on-failure
+    networks:
+      - app
+
+  ws-server:
+    build:
+      context: .
+      dockerfile: apps/ws-server/Dockerfile
+    image: 8byte-ws-server
+    ports:
+      - "8081:8081"
+      - "8080:8080"
+    environment:
+      WS_HTTP_PORT: "8081"
+      WS_PORT: "8080"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/mydb"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Export in shell so Bun/process definitely sees Docker hostnames
+    command:
+      - sh
+      - -c
+      - export DATABASE_URL="postgresql://postgres:postgres@postgres:5432/mydb" REDIS_URL="redis://redis:6379" WS_HTTP_PORT="8081" WS_PORT="8080" && sleep 3 && exec bun run dev
+    restart: on-failure
+    networks:
+      - app
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: 8byte-web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:3001"
+    depends_on:
+      - backend
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge
+
+volumes:
+  postgres_data:

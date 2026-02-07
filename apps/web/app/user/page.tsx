@@ -233,9 +233,20 @@ export default function UserPage() {
     return (
       <div className="flex flex-col gap-4">
         <p className="text-white/90">{displayError ?? "User not found"}</p>
-        <Button asChild variant="outline" className="border-white/30 text-white w-fit">
-          <Link href="/sign-in">Sign in</Link>
-        </Button>
+        <div className="flex gap-2">
+          {user !== undefined && (
+            <Button
+              variant="outline"
+              className="border-white/30 text-white w-fit"
+              onClick={() => refresh()}
+            >
+              Retry
+            </Button>
+          )}
+          <Button asChild variant="outline" className="border-white/30 text-white w-fit">
+            <Link href="/sign-in">Sign in</Link>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -410,16 +421,13 @@ export default function UserPage() {
               <TableHead className="text-white/90 font-medium text-right">
                 Gain/Loss
               </TableHead>
-              <TableHead className="text-white/90 font-medium text-right">
-                Latest earnings
-              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {tableStocks.length === 0 ? (
               <TableRow className="border-white/20 hover:bg-white/5">
                 <TableCell
-                  colSpan={isDeleteMode ? 6 : 5}
+                  colSpan={isDeleteMode ? 5 : 4}
                   className="text-white/70 text-center py-8"
                 >
                   No stocks in your portfolio yet.
@@ -466,9 +474,6 @@ export default function UserPage() {
                     ) : (
                       <span className="text-white/90">—</span>
                     )}
-                  </TableCell>
-                  <TableCell className="text-right text-white/90">
-                    {row.latestEarnings ?? "—"}
                   </TableCell>
                 </TableRow>
               ))

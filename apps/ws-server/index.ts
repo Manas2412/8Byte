@@ -1,4 +1,9 @@
-import "dotenv/config";
+// Only load .env when not set (e.g. Docker Compose sets DATABASE_URL, REDIS_URL)
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+if (!process.env.DATABASE_URL || !process.env.REDIS_URL) {
+  require("dotenv").config();
+}
 import { WebSocketServer } from "ws";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "backend-common/config";
@@ -35,11 +40,13 @@ Bun.serve({
       try {
         const messageId = await pushPortfolioRefreshToStream(userId);
         if (!messageId) {
+          console.warn("[ws-server] Redis unavailable; cannot queue refresh for", userId.slice(0, 8) + "...");
           return new Response(
             JSON.stringify({ error: "Redis unavailable" }),
             { status: 503, headers: { "Content-Type": "application/json" } }
           );
         }
+        console.log("[ws-server] Queued refresh for userId:", userId.slice(0, 8) + "...", "messageId:", messageId);
         return new Response(
           JSON.stringify({ queued: true, userId, messageId }),
           { status: 202, headers: { "Content-Type": "application/json" } }
@@ -58,6 +65,7 @@ Bun.serve({
 });
 
 console.log(`📡 WS-server HTTP API on http://localhost:${HTTP_PORT}`);
+console.log("[ws-server] Rate limiting & safety: Cache responses (Redis / in-memory); limit requests (e.g. 1 request per symbol per minute); never scrape on every page load.");
 
 // ----- Queue worker: consumes stream in batches, delay between batches to avoid Yahoo/Google rate limit -----
 startPortfolioQueueWorker();

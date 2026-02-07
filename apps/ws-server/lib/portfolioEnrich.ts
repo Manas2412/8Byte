@@ -1,115 +1,192 @@
-function toYahooSymbol(symbol: string, exchange: string): string {
-  const s = symbol.trim();
-  if (s.endsWith(".NS") || s.endsWith(".BO")) return s;
-  if (exchange.toUpperCase() === "BSE") return `${s}.BO`;
-  if (exchange.toUpperCase() === "NSE") return `${s}.NS`;
+/**
+ * Build enriched portfolio using NSE (CMP, P/E, present value, gain/loss).
+ * Always call from backend/ws-server; never from frontend.
+ * Cache responses (Redis / in-memory); limit requests (e.g. 1 per symbol per minute); never scrape on every page load.
+ */
+
+/** NSE expects plain symbol (e.g. RELIANCE, TCS). Strip .NS/.BO and uppercase. */
+function toNseSymbol(symbol: string, _exchange: string): string {
+  const s = symbol.trim().toUpperCase();
+  if (s.endsWith(".NS") || s.endsWith(".BO")) return s.slice(0, -3);
   return s;
 }
 
-function toGoogleFinanceSymbol(symbol: string, exchange: string): string {
-  const s = symbol.trim();
-  const ex = exchange.toUpperCase();
-  // Google Finance quote URLs typically look like:
-  // - https://www.google.com/finance/quote/TCS:NSE
-  // - https://www.google.com/finance/quote/RELIANCE:BOM (BSE is often BOM)
-  if (s.includes(":")) return s; // already in SYMBOL:EX form
-  if (ex === "BSE") return `${s}:BOM`;
-  if (ex === "NSE") return `${s}:NSE`;
-  return `${s}:${ex}`;
-}
-
-/**
- * Yahoo Finance does not have an official public API.
- * We use the unofficial `yahoo-finance2` library as a pragmatic solution.
- */
-async function fetchYahooCmp(yahooSymbol: string): Promise<number | null> {
-  try {
-    const yahooFinance = (await import("yahoo-finance2")).default;
-    const quote = (await yahooFinance.quote(yahooSymbol)) as {
-      regularMarketPrice?: number;
-      regularMarketOpen?: number;
-    };
-    return quote.regularMarketPrice ?? quote.regularMarketOpen ?? null;
-  } catch {
-    return null;
-  }
-}
-
-type GoogleFinanceMetrics = {
+type QuoteResult = {
+  cmp: number | null;
+  previousClose: number | null;
   peRatio: number | null;
-  latestEarnings: string | null; // ISO date or a human string if only that is available
-  sourceUrl: string;
+  latestEarnings: string | null;
+};
+
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept: "application/json",
+  "Accept-Language": "en,gu;q=0.9,hi;q=0.8",
+  "Accept-Encoding": "gzip, deflate, br",
+  Referer: "https://www.nseindia.com/",
 };
 
 /**
- * Google Finance also does not have an official public API.
- * Best-effort implementation via HTML fetching + scraping.
- *
- * NOTE: Scraping can break if Google changes markup; we keep this resilient and optional.
+ * Flow: NSE (all data) → on failure Yahoo (CMP only) → Google (P/E + latest earnings).
  */
-async function fetchGoogleFinanceMetrics(
-  googleSymbol: string
-): Promise<GoogleFinanceMetrics> {
-  const sourceUrl = `https://www.google.com/finance/quote/${encodeURIComponent(
-    googleSymbol
-  )}`;
 
+/** Yahoo Finance v8 chart: CMP only. Use when NSE fails. Symbol e.g. TCS.NS */
+async function fetchYahooCmp(
+  yahooSymbol: string
+): Promise<{ cmp: number | null; previousClose: number | null }> {
+  const { getQuoteCache, setQuoteCache } = await import("cached-db/client");
+  const cached = (await getQuoteCache(yahooSymbol, "yahoo")) as
+    | { cmp: number | null; previousClose: number | null }
+    | null;
+  if (cached && cached.cmp != null) return cached;
   try {
-    const res = await fetch(sourceUrl, {
-      headers: {
-        // A simple UA reduces the chance of getting a blocked/empty response.
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
+    const { default: axios } = await import("axios");
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`;
+    const { data } = await axios.get(url, {
+      timeout: 10000,
+      headers: { "User-Agent": BROWSER_HEADERS["User-Agent"], Accept: "application/json" },
+      validateStatus: (s) => s === 200,
     });
-    if (!res.ok) {
-      return { peRatio: null, latestEarnings: null, sourceUrl };
-    }
-    const html = await res.text();
+    const result = data?.chart?.result?.[0];
+    const cmp =
+      result?.meta?.regularMarketPrice != null
+        ? Number(result.meta.regularMarketPrice)
+        : result?.meta?.previousClose != null
+          ? Number(result.meta.previousClose)
+          : null;
+    const previousClose =
+      result?.meta?.previousClose != null ? Number(result.meta.previousClose) : null;
+    if (cmp != null) await setQuoteCache(yahooSymbol, "yahoo", { cmp, previousClose });
+    return { cmp, previousClose };
+  } catch {
+    return { cmp: null, previousClose: null };
+  }
+}
 
-    // --- P/E ratio ---
-    // Try a few patterns; Google markup varies by region/experiment.
-    const pePatterns: RegExp[] = [
-      /P\/E ratio<\/div>\s*<div[^>]*>([^<]+)</i,
-      /P\/E\s*ratio<\/div>\s*<div[^>]*>([^<]+)</i,
-      /"P\/E ratio"[^]*?>([^<]{1,20})</i,
-    ];
-    let peRaw: string | null = null;
-    for (const re of pePatterns) {
-      const m = html.match(re);
-      if (m?.[1]) {
-        peRaw = m[1].trim();
-        break;
+/** Google Finance quote page: P/E and latest earnings (when NSE fails). */
+async function fetchGooglePeAndEarnings(
+  nseSymbol: string
+): Promise<{ peRatio: number | null; latestEarnings: string | null }> {
+  const { getQuoteCache, setQuoteCache } = await import("cached-db/client");
+  const cached = (await getQuoteCache(nseSymbol, "google")) as {
+    peRatio?: number | null;
+    latestEarnings?: string | null;
+  } | null;
+  if (cached && (cached.peRatio != null || cached.latestEarnings != null)) {
+    return {
+      peRatio: cached.peRatio ?? null,
+      latestEarnings: cached.latestEarnings ?? null,
+    };
+  }
+  try {
+    const { default: axios } = await import("axios");
+    const url = `https://www.google.com/finance/quote/${encodeURIComponent(nseSymbol)}:NSE`;
+    const { data } = await axios.get(url, {
+      timeout: 10000,
+      headers: { "User-Agent": BROWSER_HEADERS["User-Agent"], Accept: "text/html" },
+      validateStatus: (s) => s === 200,
+      responseType: "text",
+    });
+    const html = typeof data === "string" ? data : "";
+    let peRatio: number | null = null;
+    let latestEarnings: string | null = null;
+
+    const peMatch =
+      html.match(/"trailingPe"\s*:\s*(\d+\.?\d*)/) ??
+      html.match(/"peRatio"\s*:\s*(\d+\.?\d*)/i) ??
+      html.match(/"P\/E"[^}]*?"(\d+\.?\d*)"/) ??
+      html.match(/P\/E[\s\S]*?(\d+\.?\d+)/);
+    if (peMatch?.[1]) {
+      const n = Number(peMatch[1]);
+      if (Number.isFinite(n) && n > 0 && n < 1e6) peRatio = n;
+    }
+
+    const earningsMatch =
+      html.match(/"earningsDate"\s*:\s*"([^"]+)"/) ??
+      html.match(/Earnings[^]*?(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i);
+    if (earningsMatch?.[1]) latestEarnings = earningsMatch[1].trim();
+
+    const out = { peRatio, latestEarnings };
+    if (peRatio != null || latestEarnings != null) await setQuoteCache(nseSymbol, "google", out);
+    return out;
+  } catch {
+    return { peRatio: null, latestEarnings: null };
+  }
+}
+
+/** NSE with session + delay; fallback to Yahoo on 403. */
+async function fetchQuote(nseSymbol: string): Promise<QuoteResult> {
+  const { getQuoteCache, setQuoteCache } = await import("cached-db/client");
+  const cached = (await getQuoteCache(nseSymbol, "nse")) as QuoteResult | null;
+  if (cached && (cached.cmp != null || cached.previousClose != null)) return cached;
+
+  let nseFailed = false;
+  try {
+    const { default: axios } = await import("axios");
+    const { CookieJar } = await import("tough-cookie");
+    const { wrapper } = await import("axios-cookiejar-support");
+
+    const jar = new CookieJar();
+    const client = wrapper(
+      axios.create({
+        jar,
+        withCredentials: true,
+        timeout: 15000,
+        headers: BROWSER_HEADERS,
+      })
+    );
+
+    await client.get("https://www.nseindia.com");
+    await new Promise((r) => setTimeout(r, 1500));
+    const quotePage = `https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(nseSymbol)}`;
+    await client.get(quotePage);
+    await new Promise((r) => setTimeout(r, 500));
+
+    const resp = await client.get(
+      `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(nseSymbol)}`,
+      { headers: { ...BROWSER_HEADERS, Referer: quotePage } }
+    );
+    const data = resp?.data;
+
+    if (resp.status !== 200 || !data || typeof data !== "object") {
+      nseFailed = true;
+    } else {
+      const priceInfo = data?.priceInfo ?? {};
+      const metadata = data?.metadata ?? {};
+      const lastPrice = priceInfo.lastPrice;
+      const previousClose = priceInfo.previousClose;
+      let peRatio: number | null = null;
+      const peRaw = metadata.pdSectorPe;
+      if (peRaw != null && peRaw !== "N/A" && peRaw !== "") {
+        const n = Number(peRaw);
+        if (Number.isFinite(n)) peRatio = n;
+      }
+      const cmp = lastPrice != null ? Number(lastPrice) : null;
+      const prev = previousClose != null ? Number(previousClose) : null;
+      const out: QuoteResult = { cmp, previousClose: prev, peRatio, latestEarnings: null };
+      if (cmp != null || prev != null) {
+        await setQuoteCache(nseSymbol, "nse", out);
+        return out;
       }
     }
-    const peRatio =
-      peRaw && peRaw !== "-" ? Number(peRaw.replace(/,/g, "")) : null;
-    const pe = Number.isFinite(peRatio as number) ? (peRatio as number) : null;
-
-    // --- Latest earnings ---
-    // Best-effort: look for an earnings-related date in the page.
-    // We accept ISO yyyy-mm-dd if present, otherwise a human date like "Feb 5, 2026".
-    const isoDate = html.match(/\b(20\d{2}-\d{2}-\d{2})\b/)?.[1] ?? null;
-    const humanDate =
-      html.match(
-        /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+20\d{2}\b/
-      )?.[0] ?? null;
-
-    // Only return a date if it appears close to an earnings keyword (reduce false positives).
-    const earningsWindow = html
-      .toLowerCase()
-      .slice(0, Math.min(html.length, 250_000)); // cap scanning cost
-    const hasEarningsKeyword =
-      earningsWindow.includes("earnings") || earningsWindow.includes("eps");
-
-    const latestEarnings =
-      hasEarningsKeyword ? isoDate ?? humanDate ?? null : null;
-
-    return { peRatio: pe, latestEarnings, sourceUrl };
   } catch {
-    return { peRatio: null, latestEarnings: null, sourceUrl };
+    nseFailed = true;
   }
+
+  if (nseFailed) {
+    const yahoo = await fetchYahooCmp(`${nseSymbol}.NS`);
+    if (yahoo.cmp != null) {
+      const google = await fetchGooglePeAndEarnings(nseSymbol);
+      return {
+        cmp: yahoo.cmp,
+        previousClose: yahoo.previousClose,
+        peRatio: google.peRatio,
+        latestEarnings: google.latestEarnings,
+      };
+    }
+  }
+  return { cmp: null, previousClose: null, peRatio: null, latestEarnings: null };
 }
 
 export type StockRow = {
@@ -154,24 +231,9 @@ export async function buildEnrichedPortfolio(
       const investment = Number(s.investment);
       const qty = s.purchasedQuantity;
       const exchange = s.exchange ?? "NSE";
-      const yahooSymbol = toYahooSymbol(s.symbol, exchange);
-      const googleSymbol = toGoogleFinanceSymbol(s.symbol, exchange);
+      const nseSymbol = toNseSymbol(s.symbol, exchange);
 
-      let cmp: number | null = null;
-      let peRatio: number | null = null;
-      let latestEarnings: string | null = null;
-
-      try {
-        // Yahoo (unofficial): CMP / price
-        cmp = await fetchYahooCmp(yahooSymbol);
-
-        // Google Finance (scrape, unofficial): P/E + earnings
-        const g = await fetchGoogleFinanceMetrics(googleSymbol);
-        peRatio = g.peRatio;
-        latestEarnings = g.latestEarnings;
-      } catch {
-        // leave cmp/pe/earnings null on fetch error
-      }
+      const { cmp, peRatio, latestEarnings } = await fetchQuote(nseSymbol);
 
       const cmpNum = cmp ?? Number(s.purchasedPrice);
       const presentValue = Math.round(cmpNum * qty * 100) / 100;
@@ -182,6 +244,7 @@ export async function buildEnrichedPortfolio(
           : 0;
 
       return {
+        id: (s as { id: string }).id,
         stockName: s.name,
         symbol: s.symbol,
         industry: (s as { industry?: string }).industry,
@@ -195,17 +258,6 @@ export async function buildEnrichedPortfolio(
         peRatio: peRatio ?? undefined,
         latestEarnings: latestEarnings ?? undefined,
         portfolioPercent,
-        dataSource: {
-          // Both are unofficial (no public official APIs).
-          yahoo: { symbol: yahooSymbol, note: "unofficial (yahoo-finance2)" },
-          google: {
-            symbol: googleSymbol,
-            note: "unofficial (HTML scrape)",
-            url: `https://www.google.com/finance/quote/${encodeURIComponent(
-              googleSymbol
-            )}`,
-          },
-        },
       };
     })
   );
