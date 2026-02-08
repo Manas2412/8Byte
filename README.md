@@ -179,7 +179,6 @@ docker compose up -d
 
 ## 📖 Documentation
 
-- **TROUBLESHOOTING.md** – Common errors (Docker/ghcr.io, env, Redis/Postgres)
 - **docker-compose.yml** – Service definitions, ports, and env
 - **.github/workflows/cd_dev.yml** – CI workflow (lint, typecheck, build)
 
