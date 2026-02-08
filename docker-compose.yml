@@ -1,12 +1,10 @@
-# 8Byte – Postgres, Redis, backend, ws-server, web on one network
-# All services can talk via service names (postgres, redis, backend, ws-server, web).
+
 # Run: docker compose up --build
 # Web: http://localhost:3000  |  API: http://localhost:3001
 #
 # First time: run DB migrations (from repo root):
 #   docker compose run --rm backend sh -c "cd /app/packages/db && bunx prisma migrate deploy"
-#
-# Postgres/Redis use host ports 5433/6380 to avoid conflict with local 5432/6379.
+
 
 services:
   postgres:
@@ -83,7 +81,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # Export in shell so Bun/process definitely sees Docker hostnames
     command:
       - sh
       - -c

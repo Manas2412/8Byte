@@ -2,7 +2,6 @@
 FROM oven/bun:1 AS base
 WORKDIR /app
 
-# Copy workspace root and all package manifests for install
 COPY package.json bun.lock* ./
 COPY apps/backend-server/package.json apps/backend-server/
 COPY apps/ws-server/package.json apps/ws-server/
@@ -18,8 +17,6 @@ COPY packages/ws-frontend/package.json packages/ws-frontend/
 
 RUN bun install --frozen-lockfile
 
-# Copy full source
 COPY . .
 
-# No separate build step for dev; each service runs `bun run dev` in its app dir.
-# For production you could add turbo build and switch to node/bun run start.
+

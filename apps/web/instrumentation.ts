@@ -1,7 +1,4 @@
-/**
- * Runs when the Next.js server starts (dev or production).
- * Used to log rate limiting & safety notice in the web terminal.
- */
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     console.log(

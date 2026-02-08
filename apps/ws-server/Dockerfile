@@ -1,8 +1,6 @@
-# Build from repo root: docker build -f apps/ws-server/Dockerfile .
 FROM oven/bun:1
 WORKDIR /app
 
-# Workspace manifests for install
 COPY package.json bun.lock* ./
 COPY apps/backend-server/package.json apps/backend-server/
 COPY apps/ws-server/package.json apps/ws-server/
@@ -19,7 +17,7 @@ COPY packages/ws-frontend/package.json packages/ws-frontend/
 RUN bun install --frozen-lockfile
 
 COPY . .
-# Ensure no .env overrides Docker Compose env (defensive)
+RUN cd /app/packages/db && bunx prisma generate
 RUN rm -f .env .env.local .env.development .env.production 2>/dev/null; \
     rm -f apps/backend-server/.env apps/backend-server/.env.local 2>/dev/null; \
     rm -f apps/ws-server/.env apps/ws-server/.env.local 2>/dev/null; \

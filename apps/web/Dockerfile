@@ -1,8 +1,6 @@
-# Build from repo root: docker build -f apps/web/Dockerfile .
 FROM oven/bun:1
 WORKDIR /app
 
-# Workspace manifests for install
 COPY package.json bun.lock* ./
 COPY apps/backend-server/package.json apps/backend-server/
 COPY apps/ws-server/package.json apps/ws-server/
