@@ -33,6 +33,47 @@ A portfolio and stock tracking platform built with Next.js and a Turbo monorepo,
 
 ---
 
+## Logical Flow Diagram
+
+```mermaid
+flowchart TB
+  subgraph client[" "]
+    FE[Frontend<br/>Next.js · Web UI]
+  end
+
+  subgraph backend[" "]
+    API[Backend Server<br/>Express · Read-through Cache<br/>Portfolio API · Auth / DB]
+  end
+
+  subgraph cache[" "]
+    Redis[(Redis Cache<br/>Enriched Portfolio)]
+  end
+
+  subgraph ws[" "]
+    Trigger[ws-server<br/>Refresh Trigger<br/>HTTP / Cron]
+    Stream[Redis Stream<br/>Refresh Queue]
+    Worker[ws-server Worker<br/>Fetch Live Data · Batch + Delay]
+  end
+
+  subgraph external["External APIs"]
+    NSE[NSE API<br/>CMP]
+    Yahoo[Yahoo Finance<br/>CMP fallback]
+    Google[Google Finance<br/>P/E, Earnings]
+  end
+
+  FE -->|"HTTP Poll (15s)"| API
+  API -->|Cache HIT| Redis
+  API -->|Cache MISS| Trigger
+  Trigger -->|XADD| Stream
+  Stream -->|XREADGROUP| Worker
+  Worker -->|write| Redis
+  Worker --> NSE
+  Worker --> Yahoo
+  Worker --> Google
+```
+
+---
+
 
 ## 🏁 Getting Started
 
@@ -183,46 +224,7 @@ docker compose up -d
 - **.github/workflows/cd_dev.yml** – CI workflow (lint, typecheck, build)
 
 ---
-## Logical Flow Diagram
 
-```mermaid
-flowchart TB
-  subgraph client[" "]
-    FE[Frontend<br/>Next.js · Web UI]
-  end
-
-  subgraph backend[" "]
-    API[Backend Server<br/>Express · Read-through Cache<br/>Portfolio API · Auth / DB]
-  end
-
-  subgraph cache[" "]
-    Redis[(Redis Cache<br/>Enriched Portfolio)]
-  end
-
-  subgraph ws[" "]
-    Trigger[ws-server<br/>Refresh Trigger<br/>HTTP / Cron]
-    Stream[Redis Stream<br/>Refresh Queue]
-    Worker[ws-server Worker<br/>Fetch Live Data · Batch + Delay]
-  end
-
-  subgraph external["External APIs"]
-    NSE[NSE API<br/>CMP]
-    Yahoo[Yahoo Finance<br/>CMP fallback]
-    Google[Google Finance<br/>P/E, Earnings]
-  end
-
-  FE -->|"HTTP Poll (15s)"| API
-  API -->|Cache HIT| Redis
-  API -->|Cache MISS| Trigger
-  Trigger -->|XADD| Stream
-  Stream -->|XREADGROUP| Worker
-  Worker -->|write| Redis
-  Worker --> NSE
-  Worker --> Yahoo
-  Worker --> Google
-```
-
----
 ## 📝 License
 
 This project is licensed under the MIT License.
